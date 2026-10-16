@@ -1,0 +1,156 @@
+# DIC-2：Kaggle 50 Startups and Boston Housing
+
+可直接執行的全英文多元線性迴歸分析網站。前端使用原生 JavaScript、Chart.js 與客製 CSS；後端使用 FastAPI、pandas、scikit-learn、statsmodels。沒有使用固定 model_data.js 結果。
+
+## 啟動
+
+建議 Python 3.9～3.12。於專案目錄執行：
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python -m uvicorn app:app --host 127.0.0.1 --port 8000
+```
+
+瀏覽 http://localhost:8000 ，首次開啟直接顯示已計算的完整分析結果，預設 seed 0、Lasso（L1 Ranking），並選擇該方法的最低 CV RMSE 模型；目前 50 Startups 對應 k=2（R&D Spend＋Marketing Spend）。網站介面、資料描述、圖表、統計說明、狀態與錯誤提示均使用英文。Random seed 可切換 0（參考站切分）或 42（作業原始設定）；兩種內建 problem、兩種 seed 都有持久化結果快取，重新整理或切換不需重新訓練。內建資料切換任一數值目標時直接讀取對應結果；自訂候選特徵組合需按「執行分析」，恢復全選即可立即復用內建結果。Restaurant Tips 範例同樣有持久快取；其他自訂 CSV 切換目標時會實際分析。Windows 可使用 `.venv\Scripts\activate`，再執行 `python -m uvicorn app:app --port 8000`。
+
+內建 CSV、Chart.js、繁體中文字型及圖示均隨專案保存；首次安裝 Python 依賴需網路，之後內建分析可離線使用。載入遠端 CSV 需要網路。此網站需要 Python 服務，**不能直接部署為 GitHub Pages 靜態網站**。
+
+## 功能
+
+- 紫色工作區配置：左側資料設定、右側模型與分析、桌面側邊導覽／手機底部導覽。保留參考網站的演算法切換、五張指標、特徵 chips、兩張折線圖、公式、係數表、Live Predictor、殘差表與頁尾。
+- 兩種 problem：50 Startups / Profit；Boston Housing / MEDV（原 CSV 欄位名稱為 `medv`）。切換時更新說明、來源、候選特徵、目標並清除舊結果。
+- CSV URL 及本機 CSV 上傳；前 10 筆預覽、型態、缺失值統計；任選數值目標及候選欄位。
+- Lasso、Forward SFS、RFE、ElasticNet、Exhaustive Search 及 Full OLS baseline。
+- Compare All 顯示所有已執行方法的測試曲線；「目前檢視模型」及 k 按鈕同步更新全部分析區塊。圖表 tooltip 顯示特徵組合、測試值及 CV RMSE。
+- 動態數值輸入／同步滑桿、類別選單、即時點預測。超出訓練範圍顯示外插提示，空白數值使用訓練中位數。
+- 統計值不可計算時顯示 N/A 與原因；殘差依絕對值排序。
+
+## 資料來源
+
+已於 2026-10-15 實際下載並於網站驗證：
+
+- [50 Startups 原始 CSV](https://raw.githubusercontent.com/Avik-Jain/100-Days-Of-ML-Code/master/datasets/50_Startups.csv)：50 筆、5 欄，目標 Profit。State 使用訓練集學到的類別順序，drop-first 編碼，全部特徵通常為 5 個。
+- [Boston Housing 原始 CSV](https://raw.githubusercontent.com/selva86/datasets/master/BostonHousing.csv)：506 筆、14 欄，13 個候選特徵與 medv。MEDV 單位為千美元。不是 California Housing，也不依賴已移除的 `load_boston`。
+
+Boston Housing 為歷史教學資料，其 B 變數具有歧視性背景與解讀爭議；保留原始資料供課程重現，結果不宜用於現實住房政策或個人決策。
+
+## 可重現分析流程
+
+1. 以 CSV 型態辨識數值／類別欄位，非有限數值視為缺失。排除目標缺失的資料列，不補目標。固定 `train_test_split(test_size=0.2, random_state=所選 seed)`，所有方法共享相同測試集。Sample ID 為原 CSV 的 1-based 資料列編號。
+2. 在 80% 訓練集做 5-fold shuffled CV（使用所選 seed，介面預設 0），每個 fold 重新學習前處理與特徵選擇。以各 fold RMSE 的平均值比較方法和 k；Full OLS 同樣納入比較。分數相同時優先較小 k，再依方法名稱排序。
+3. 每個訓練 fold 數值使用中位數補值（全缺失使用 0）；類別使用眾數補值，建立排序後的 drop-first 虛擬變數。未知類別全部編為 0，即參考類別。完全缺失／常數欄位可能使 OLS 不滿秩，會標示統計限制。
+4. Lasso / ElasticNet：X 與 y 都在當前訓練 fold 標準化，固定 alpha=0.01，ElasticNet l1_ratio=0.5，按係數絕對值排序。零係數平手按編碼欄位順序處理。這些超參數固定，沒有使用測試集調整。
+5. RFE：以當前訓練 fold 標準化的線性模型，每次移除絕對係數最小的特徵。
+6. Forward SFS 與 Exhaustive：在當前訓練 fold 內另做 3-fold shuffled CV（使用所選 seed，介面預設 0）。各內層 fold 獨立學習補值、編碼與標準化；驗證 fold 不參與擬合。SFS 逐步加入最小 CV RMSE 的候選，Exhaustive 確實列舉範圍內全部組合。若內層訓練集未見某類別，對應虛擬欄位為 0，不從驗證集學習。外層 fold 會重新執行整套選擇流程。
+7. 由訓練 CV 決定最佳方法／k **之後**，於完整訓練集重新選擇特徵、擬合 OLS，才產生測試集預測。模型以標準化設計矩陣穩定求解，係數與共變異數矩陣正確轉回原始單位；公式與即時預測使用未四捨五入的係數。
+8. RMSE、MAE、R² 來自測試集；Adjusted R²、F 與 p-value 來自訓練 OLS。VIF 在含截距的設計矩陣計算。秩不足時係數為廣義逆解、不唯一，保留點預測，但 SE／t／p／CI／F／Adjusted R² 顯示 N/A；截距 VIF 不適用。傳統選模後推論未校正選模效應，僅供探索。
+9. 殘差 = 實際 − 預測；百分比誤差 = 100 × |殘差 / 實際|，實際為 0 顯示 N/A。高殘差門檻 = 2 × 訓練 RMSE，只是診斷提示，不是正式離群值檢定。
+
+測試曲線為事後比較圖，不拿測試 RMSE 選擇最佳模型。使用者手動挑選其他模型不改變「CV 最佳」標籤。CV 最佳僅限**本次已執行的方法與 k 範圍**；CV 最小分數仍可能有選擇樂觀偏誤，獨立測試集提供最終評估。
+
+## 運算上限與限制
+
+- CSV：UTF-8、逗號分隔、有表頭；5 MB、25～5,000 筆、2～60 欄。數值欄若混入非數字文字會被辨識為類別，請先清理資料。
+- 最多 30 個編碼後候選特徵。需足夠的內層訓練樣本與至少 25 筆有效目標；常數目標拒絕分析。
+- Exhaustive 每次選模輪次最多 10,000 個組合，完整曲線的計數為 `2^p - 1`；外層 5 次加完整訓練 1 次，每組合再評估 3 個內層 fold。超限時只跳過 Exhaustive 並顯示原因，其餘方法照常計算；若只選 Exhaustive 則明確拒絕。可減少候選欄位縮小範圍，沒有替換演算法。每個 fold 的前處理矩陣只擬合一次，各組合以數值穩定的最小平方法求解，已與獨立 sklearn 模型驗算一致。
+- 無「搜尋最大 k」控制。自動比較 k=1 到全部編碼後特徵：50 Startups 全五方法 k=1～5；Boston 全五方法 k=1～13（Exhaustive 為 8,191 個組合）。兩個 seed 都已重新計算並快取。Full OLS 始終包含全部候選特徵。
+- 稀有類別可能讓某 fold 可用編碼特徵少於 k，此時明確要求減少候選欄位或合併稀有類別。
+- 單機教學服務：同時一個分析工作；記憶體最多保存 20 份資料與約 30 個工作，重啟後清除。沒有帳號、持久化工作、排程、分析取消或多租戶隔離。分析期間可切換資料，舊工作仍會完成但不會覆蓋新畫面；內建 problem 或 seed 優先直接顯示符合設定的持久化結果；未命中快取時，最新選擇會排隊自動重算。請以單一 uvicorn worker 執行。
+- URL 來源需公開 HTTP(S)，會拒絕非公開 IP、過大檔案、過多重新導向與逾時。建議本機使用；若部署為公開服務，應另配置驗證、資源配額與網路出口政策。
+
+## 驗證與截圖
+
+```bash
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python -m pytest -q
+# 先啟動網站，再執行瀏覽器驗證
+PLAYWRIGHT_BROWSERS_PATH=/tmp/dic2-browsers python -m playwright install chromium
+python tests/browser_check.py
+```
+
+- 統計測試：五種方法、最佳 CV、同一切分、原始單位公式重現預測、訓練專屬補值／未知類別、零目標、缺失值、奇異設計矩陣與運算上限。
+- 端到端：兩種內建資料；50 Startups 全五方法 k=1～5、Boston 全五方法 k=1～13；URL CSV、本機自訂 CSV、切換方法與 k、預測輸入、錯誤提示、390px 手機無頁面水平溢出；沒有 JavaScript 執行錯誤。新增自動啟動、seed 0／42、連續快速切換及舊結果清除的驗證，見 `tests/seed_browser_check.py`。
+- `artifacts/reference-desktop.png`：實際參考站截圖。
+- `artifacts/desktop.png`、`artifacts/boston-desktop.png`、`artifacts/mobile.png`：實際網站截圖。
+- `artifacts/browser-results.json`：瀏覽器驗證項目。
+
+## 檔案與設計參考
+
+- `analysis.py`：前處理、選模與統計。
+- `app.py`：FastAPI、CSV 載入與背景分析工作。
+- `static/`：完整前端、在地化字型、圖示與 Chart.js。
+- `data/`：已驗證的公開 CSV 快照。
+- `tests/`：統計與瀏覽器測試。
+
+實際檢視 [參考網站](https://huanchen1107.github.io/AIoT-DIC2-MultipleLR/)、其內嵌 JavaScript 及 [model_data.js](https://huanchen1107.github.io/AIoT-DIC2-MultipleLR/model_data.js)，並沿用其 CSS 版面與視覺語言（原站另參考 StatsUnlock）。本專案改寫互動及資料流程，修正固定最佳 k／過度擬合／F 值 fallback 文案。參考站 CSS 的原始著作權歸原作者，作為指定課堂重現使用；再散布前請自行確認原作者授權。
+
+第三方：Chart.js 4.4.1（MIT，檔案內保留授權標頭）；Font Awesome Free 6.5.1（圖示 CC BY 4.0、字型 SIL OFL 1.1、程式碼 MIT）；Noto Sans TC（SIL Open Font License，見 `static/fonts/OFL.txt`）。
+
+Seed 0 的 Lasso k=2（R&D Spend＋Marketing Spend）已驗證 Test RMSE=8,198.79719078855、R²=0.947438644726848，重現參考站該模型。其餘方法仍沿用本作業的訓練集交叉驗證流程，因此 seed 0 不代表所有選模與統計定義都與原站一致。
+
+
+## 內建結果快取
+
+`data/presets/` 保存以本專案分析引擎實際計算的 42 份結果：50 Startups 的 4 個數值目標、Boston Housing 的 14 個數值目標、Restaurant Tips 的 3 個數值目標，各有 seed 0 與 42。每個目標都以其餘欄位作為候選特徵，產生所有方法的完整 k 曲線。它們不是複製參考站的固定數據。API 回傳經驗證的結果，前端直接渲染，進站、重新整理與預設設定下切換資料／seed 都不會呼叫訓練 API。
+
+快取以 CSV 內容、`analysis.py` 內容、seed、方法、目標、完整 k 範圍及數值套件版本的 SHA-256 指紋驗證。目標欄位、seed 分別索引不同快取；候選欄位不是該目標的完整候選集合時，不套用內建結果；自訂 CSV 仍由分析引擎處理。資料、分析程式或依賴版本變動後請執行：
+
+```bash
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python scripts/build_presets.py
+```
+
+此指令只重建失效的內建結果，不必每次啟動執行。若快取缺失或失效，網站會退回實際分析，不會顯示過期數值。要在其他環境直接使用隨附快取，可安裝 `requirements-cache.txt` 中與快取一致的數值套件版本；否則先執行上述重建指令。
+
+## Sweet Spot / Cliff 視覺標籤
+
+主視覺綠色 `Optimal Sweet Spot` 由本次所有模型的 CV 最佳結果產生；k 按鈕與圖表綠點標示目前方法的最低 CV RMSE（平手取較小 k）。橘色 `Overfitting Cliff 候選` 標示同一方法相鄰 k 中 Test RMSE 上升至少 5% 且增幅最大的點。5% 是明確的介面提示門檻，不是統計顯著門檻；沒有符合條件的點時明確顯示未見候選。此提示不代表已證實過度擬合，也不參與模型選擇。兩種標籤可能出現在同一 k，因為 CV 與測試集評估的是不同資料。
+
+
+## 目標切換與候選特徵
+
+Problem 選單只顯示資料集名稱。目標由獨立的數值目標選單決定，英文 description、公式、預測器和全部指標同步更新。內建目標結果按需讀取並保留於瀏覽器記憶體，切換回先前目標或重新全選候選特徵時直接復用，無需訓練；伺服器磁碟快取在重新整理後仍有效。
+
+自選候選特徵組合不全面預先計算；修改後隱藏舊結果並暫停 k 按鈕，顯示目前編碼後特徵數量的遞增序列，按「執行分析」後才可檢視。所有 k 按鈕及模型選單固定依方法／數值 k 排序，與 CV 分數排序分開，避免 Compare All 後順序錯亂。CHAS 等二元欄位也可作為 OLS 的數值目標進行探索；它仍是線性迴歸，不會自動改成分類模型。
+
+
+## 自訂資料範例：Restaurant Tips
+
+Problem 選單新增 **Custom CSV**。點選 **Load example**，會載入隨附的 [Seaborn 公開 Tips CSV](https://raw.githubusercontent.com/mwaskom/seaborn-data/master/tips.csv) 快照及經本專案引擎實際計算的持久化結果。Problem 顯示 **Custom · Restaurant Tips**。`tip`、`total_bill`、`size` 各有 seed 0／42 的完整五方法快取；重複載入、重新整理後載入、切換目標與 seed 都不需重新訓練。自行修改候選特徵仍需手動分析，恢復全選即復用快取。
+
+- 244 筆、7 欄，目標 `tip`。
+- 候選欄位：`total_bill`、`sex`、`smoker`、`day`、`time`、`size`。
+- 訓練集 drop-first 編碼後為 8 個特徵；比較 k=1～8，共 40 個選模模型及 Full OLS。
+- 可修改數值目標、比較方法、使用數值輸入／滑桿與類別選單預測。
+- 範例按鈕使用 `data/tips.csv`，不需連線下載；自行輸入 URL 或上傳 CSV 仍走一般分析流程，不套用範例快取。
+- 測試：`python tests/english_example_browser_check.py`，驗證英文介面、遠端／本機 CSV、全五方法、動態目標、預測、英文錯誤與手機版。
+
+README 與對話保留繁體中文，網站 UI 使用英文。自訂 CSV 的原始欄位名稱與類別值不強制翻譯，以保留使用者資料。
+
+Restaurant Tips 快取回歸測試：`python tests/tips_cache_browser_check.py`，涵蓋三個目標、兩個 seed、恢復全選、重複載入與重新整理後載入，確認零訓練請求。
+
+## 2026-10-16 紫色工作區改版與還原
+
+版面參考 [Linear](https://linear.app/features) 的工作區導覽及 [Untitled UI](https://www.untitledui.com/components/dashboards) 的卡片與資訊層次。保留原有英文 UI，新增 `static/workspace.css`、重排 `static/index.html`；`app.js`、分析引擎及所有模型快取未變更。桌面將資料設定置左、分析結果置右；手機改為單欄和底部區段導覽。
+
+改版前完整前端保存在 `backups/layout-before-purple-20261016/static/`，包括 CSS、JavaScript、字型及圖示。`manifest.json` 記錄檔案 SHA-256，`desktop.png`／`mobile.png` 記錄原始版面。
+
+還原舊版：
+
+```bash
+python scripts/restore_layout.py
+```
+
+還原指令會先校驗快照，將當前前端另存到 `backups/before-restore-時間戳/`，再恢復舊版前端。之後重新整理瀏覽器即可，後端和資料快取不受影響。已在暫存目錄實測還原後全部快照檔案雜湊一致，且新版會另行保留。
+
+驗證：`full_progression_browser_check.py`、`target_switch_browser_check.py`、`tips_cache_browser_check.py`、`english_example_browser_check.py`，涵蓋內建全部目標／seed、Boston k=1～13、五種方法與比較模式、Tips 快取、自選特徵、CSV 上傳、動態預測、錯誤提示、英文介面及手機排版。新版截圖：`artifacts/purple-desktop.png`、`artifacts/purple-mobile.png`。
+
+## Problem 切換效能修正
+
+原先每次切換都重新取得整包兩個 seed 的結果，Boston 約 2.6 MB；雖不重新訓練，仍有序列化與傳輸成本。現在同一頁面中的內建資料與 Tips 範例只載入一次，並共用尚未完成的請求；伺服器直接序列化已驗證的 JSON，啟用 gzip 壓縮。資料描述使用穩定的內建 ID，伺服器重啟或資料被記憶體上限淘汰後，手動分析仍可重建內建資料，不套用到任意自訂 CSV。
+
+本機 Chromium 單次量測：Boston 原先切換 1.27～1.43 秒，修正後首次約 0.59 秒、再次切換約 0.13 秒；gzip 傳輸約 590 KB。此數字為本機測試結果，實際依裝置及連線而異。重新整理會建立新的瀏覽器記憶體快取，但仍直接讀取磁碟模型結果，不重新訓練。
+
+測試：`python -m pytest tests/test_builtin_transport.py tests/test_presets.py -q`、`python tests/problem_switch_browser_check.py`，涵蓋壓縮、重複切換、快速連續選擇、請求合併與內建資料被淘汰後重新分析。數據存於 `artifacts/switch-*-before.json`、`artifacts/switch-*-after.json`（API 量測為 `switch-before.json`／`switch-after.json`）。
+
+`artifacts/` 為本機驗證截圖與報告，未納入 Git；執行瀏覽器測試前可先建立此目錄（`mkdir -p artifacts`）。原始版面備份仍隨專案保存於 `backups/layout-before-purple-20261016/`。
