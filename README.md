@@ -7,7 +7,8 @@
 
 - 前端網址：[Regression Explorer](https://maplenight0918.github.io/Regression-Analysis/)
 - [Pages 部署工作流](https://github.com/maplenight0918/Regression-Analysis/actions/workflows/pages.yml)
-- **後端尚未建立時**，內建 50 Startups、Boston Housing、Restaurant Tips 的所有目標／seed／方法／k、係數、圖表與即時預測都可直接使用；自訂 CSV 與自選特徵重新訓練會明確顯示尚未連接分析服務。
+- 後端網址：[Render API](https://regression-analysis-api-maplenight0918.onrender.com/api/health)。前端透過 `deployment.json` 連接此服務。
+- **後端尚未建立或暫時離線時**，內建 50 Startups、Boston Housing、Restaurant Tips 的所有目標／seed／方法／k、係數、圖表與即時預測都可直接使用；自訂 CSV 與自選特徵重新訓練會明確顯示尚未連接分析服務。
 
 ### 一鍵建立 Render 免費後端
 
