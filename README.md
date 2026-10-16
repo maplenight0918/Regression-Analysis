@@ -1,6 +1,6 @@
 # DIC-2：Kaggle 50 Startups and Boston Housing
 
-可直接執行的全英文多元線性迴歸分析網站。前端使用原生 JavaScript、Chart.js 與客製 CSS；後端使用 FastAPI、pandas、scikit-learn、statsmodels。沒有使用固定 model_data.js 結果。
+已部署上線的多元線性迴歸與特徵選擇網站，網站介面為英文，文件為繁體中文。前端使用原生 JavaScript、Chart.js 與紫色客製版面；後端使用 FastAPI、pandas、scikit-learn、statsmodels。內建模型由本專案分析引擎實際計算並快取，自訂資料則執行真正的前處理、選模與 OLS 訓練。
 
 
 ## 線上部署：GitHub Pages ＋ Render
@@ -8,9 +8,37 @@
 - 前端網址：[Regression Explorer](https://maplenight0918.github.io/Regression-Analysis/)
 - [Pages 部署工作流](https://github.com/maplenight0918/Regression-Analysis/actions/workflows/pages.yml)
 - 後端網址：[Render API](https://regression-analysis-api-maplenight0918.onrender.com/api/health)。前端透過 `deployment.json` 連接此服務。
-- **後端尚未建立或暫時離線時**，內建 50 Startups、Boston Housing、Restaurant Tips 的所有目標／seed／方法／k、係數、圖表與即時預測都可直接使用；自訂 CSV 與自選特徵重新訓練會明確顯示尚未連接分析服務。
+- **目前前後端已接通**：自訂 CSV 上傳、CSV URL 載入、自選特徵重訓皆已在線上正式網站實測成功。一般使用者直接開啟網站即可，不需再部署或安裝 Python。
 
-### 一鍵建立 Render 免費後端
+| 操作 | 執行位置 | 是否需要 Render |
+|---|---|---|
+| 切換內建資料集、數值目標、seed、方法與 k | Pages 上的 42 份模型快取與瀏覽器 | 否 |
+| 圖表、係數表、公式、殘差診斷、Live Predictor | 瀏覽器使用目前模型結果與係數 | 否 |
+| 上傳 CSV、載入任意 CSV URL | Render 載入與檢查資料 | 是 |
+| 修改候選特徵後按 Run Analysis、自訂資料訓練 | Render 執行 Python 分析 | 是 |
+
+```mermaid
+flowchart LR
+    Visitor[瀏覽器] --> Pages[GitHub Pages：介面與內建模型快取]
+    Visitor -->|自訂資料、重訓請求| API[Render：FastAPI]
+    API --> Engine[前處理、交叉驗證、特徵選擇、OLS]
+    Engine -->|分析結果| Visitor
+```
+
+Render 暫時離線時，內建模型仍可瀏覽；自訂分析會顯示連線失敗或逾時，不會假裝完成訓練。若部署設定根本沒有填入後端網址，才顯示分析服務尚未連接。
+
+### 如何使用線上網站
+
+1. 選擇 **50 Startups** 或 **Boston Housing**，直接檢視已計算結果；預設為 **Lasso（L1）／seed 0**。
+2. 切換 **Random seed**、**Numeric target**、方法按鈕、**Active model** 或 **Number of Features (k)**，比較結果。最佳模型依訓練集 CV 決定。
+3. 點 **Load example** 可試用 **Restaurant Tips**；此範例也有完整快取。
+4. 使用 **Dataset CSV URL → Load URL** 或上傳 CSV，確認資料預覽、數值目標及候選特徵。
+5. 選定方法（或 **Compare All Methods**）後按 **Run Analysis**。自訂資料切換目標／seed 也會自動分析；修改候選特徵則需手動執行。
+6. 在 **Live Predictor** 調整數值或類別，立即取得目前 OLS 模型的點預測。
+
+### 重新部署或建立自己的 Render 後端
+
+目前專案已有可用後端，以下步驟供複製專案或重新部署使用，不是瀏覽網站的必要步驟。
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/maplenight0918/Regression-Analysis)
 
@@ -34,22 +62,24 @@ python scripts/build_pages.py
 python -m http.server 8765 --directory dist
 ```
 
+開啟 http://localhost:8765 可預覽內建模型。此純靜態預覽仍載入 `deployment.json` 的正式 API 網址，而 Render 的 CORS 僅允許正式 Pages 網域；若要從本機實際訓練，請使用下方 FastAPI 本機啟動方式，或依測試設定啟動獨立本機 API。
+
 匯出支援專案子路徑，所有 CSS、JS、字型與資料使用相對網址。前端測試 `tests/pages_browser_check.py` 另外驗證 `/Regression-Analysis/` 子路徑、42 組預存結果、無後端存取、手機版，以及對獨立 FastAPI 服務的真實跨來源 CSV 上傳／URL 載入／自選特徵訓練。輸出的 `dist/` 不提交 Git，也不包含後端原始碼、上傳檔或憑證。
 
 官方文件：[GitHub Pages workflows](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)、[Render Blueprint](https://render.com/docs/blueprint-spec)、[Render 免費方案限制](https://render.com/docs/free)。
 
-## 啟動
+## 本機啟動
 
-建議 Python 3.9～3.12。於專案目錄執行：
+建議使用 **Python 3.11**，與正式部署環境一致。於專案目錄執行：
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-runtime.txt
 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python -m uvicorn app:app --host 127.0.0.1 --port 8000
 ```
 
-瀏覽 http://localhost:8000 ，首次開啟直接顯示已計算的完整分析結果，預設 seed 0、Lasso（L1 Ranking），並選擇該方法的最低 CV RMSE 模型；目前 50 Startups 對應 k=2（R&D Spend＋Marketing Spend）。網站介面、資料描述、圖表、統計說明、狀態與錯誤提示均使用英文。Random seed 可切換 0（參考站切分）或 42（作業原始設定）；兩種內建 problem、兩種 seed 都有持久化結果快取，重新整理或切換不需重新訓練。內建資料切換任一數值目標時直接讀取對應結果；自訂候選特徵組合需按「執行分析」，恢復全選即可立即復用內建結果。Restaurant Tips 範例同樣有持久快取；其他自訂 CSV 切換目標時會實際分析。Windows 可使用 `.venv\Scripts\activate`，再執行 `python -m uvicorn app:app --port 8000`。
+瀏覽 http://localhost:8000 ，首次開啟直接顯示已計算的完整分析結果，預設 seed 0、Lasso（L1 Ranking），並選擇該方法的最低 CV RMSE 模型；目前 50 Startups 對應 k=2（R&D Spend＋Marketing Spend）。網站介面、資料描述、圖表、統計說明、狀態與錯誤提示均使用英文。Random seed 可切換 0（參考站切分）或 42（作業原始設定）；兩種內建 problem、兩種 seed 都有持久化結果快取，重新整理或切換不需重新訓練。內建資料切換任一數值目標時直接讀取對應結果；自訂候選特徵組合需按 **Run Analysis**，恢復全選即可立即復用內建結果。Restaurant Tips 範例同樣有持久快取；其他自訂 CSV 切換目標時會實際分析。Windows 可使用 `.venv\Scripts\activate`，再執行 `python -m uvicorn app:app --port 8000`。
 
 內建 CSV、Chart.js、繁體中文字型及圖示均隨專案保存；首次安裝 Python 依賴需網路，之後內建分析可離線使用。載入遠端 CSV 需要網路。本機完整版使用 Python 服務；GitHub Pages 版本由匯出腳本產生靜態內建模型，自訂分析另連接 Render，詳見上方部署說明。
 
@@ -69,6 +99,7 @@ OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python -m uvicorn app:app --host 127.0.
 
 - [50 Startups 原始 CSV](https://raw.githubusercontent.com/Avik-Jain/100-Days-Of-ML-Code/master/datasets/50_Startups.csv)：50 筆、5 欄，目標 Profit。State 使用訓練集學到的類別順序，drop-first 編碼，全部特徵通常為 5 個。
 - [Boston Housing 原始 CSV](https://raw.githubusercontent.com/selva86/datasets/master/BostonHousing.csv)：506 筆、14 欄，13 個候選特徵與 medv。MEDV 單位為千美元。不是 California Housing，也不依賴已移除的 `load_boston`。
+- [Restaurant Tips 原始 CSV](https://raw.githubusercontent.com/mwaskom/seaborn-data/master/tips.csv)：244 筆、7 欄，預設目標 `tip`；涵蓋數值與類別欄位，編碼後最多 8 個候選特徵。
 
 Boston Housing 為歷史教學資料，其 B 變數具有歧視性背景與解讀爭議；保留原始資料供課程重現，結果不宜用於現實住房政策或個人決策。
 
@@ -94,22 +125,53 @@ Boston Housing 為歷史教學資料，其 B 變數具有歧視性背景與解�
 - 無「搜尋最大 k」控制。自動比較 k=1 到全部編碼後特徵：50 Startups 全五方法 k=1～5；Boston 全五方法 k=1～13（Exhaustive 為 8,191 個組合）。兩個 seed 都已重新計算並快取。Full OLS 始終包含全部候選特徵。
 - 稀有類別可能讓某 fold 可用編碼特徵少於 k，此時明確要求減少候選欄位或合併稀有類別。
 - 單機教學服務：同時一個分析工作；記憶體最多保存 20 份資料與約 30 個工作，重啟後清除。沒有帳號、持久化工作、排程、分析取消或多租戶隔離。分析期間可切換資料，舊工作仍會完成但不會覆蓋新畫面；內建 problem 或 seed 優先直接顯示符合設定的持久化結果；未命中快取時，最新選擇會排隊自動重算。請以單一 uvicorn worker 執行。
-- URL 來源需公開 HTTP(S)，會拒絕非公開 IP、過大檔案、過多重新導向與逾時。建議本機使用；若部署為公開服務，應另配置驗證、資源配額與網路出口政策。
+- URL 來源需公開 HTTP(S)，會拒絕非公開 IP、過大檔案、過多重新導向與逾時。目前公開部署供課堂展示使用；若要提供多人長期使用，需另加身分驗證、運算配額與工作佇列。
 
 ## 驗證與截圖
 
+### 已完成的正式網站驗證
+
+在 GitHub Pages 正式網址連接 Render 後端，已實際完成以下驗證（串接版本：[`3d2fa59`](https://github.com/maplenight0918/Regression-Analysis/commit/3d2fa5955004df0e788d7043d4637a29640d69c2)）：
+
+- 內建 Startups／Boston、seed 切換不發出 Render API 請求。
+- 取消 State 後，透過 Render 真正重新訓練 Startups 的自選特徵模型。
+- 上傳 Tips CSV，訓練 `tip` 模型並檢查係數、完整特徵 OLS 與即時預測。
+- 從指定的公開 50 Startups URL 載入並訓練，共完成 **3 次真實訓練請求**。
+- 跨來源連線正常；390px 手機無頁面水平溢出，沒有 JavaScript 執行錯誤。
+
+其他回歸驗證涵蓋 42 組內建目標／seed 快取、Boston 五方法 k=1～13、方法與模型同步、候選特徵順序、缺失值與統計限制、英文錯誤提示及版面對齊。
+
+### 執行測試
+
 ```bash
+# 固定數值套件版本，另外安裝測試工具
+pip install -r requirements-cache.txt
 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python -m pytest -q
-# 先啟動網站，再執行瀏覽器驗證
+
+# 先在另一個終端啟動本機網站（port 8000）
+mkdir -p artifacts
 PLAYWRIGHT_BROWSERS_PATH=/tmp/dic2-browsers python -m playwright install chromium
-python tests/browser_check.py
+python tests/full_progression_browser_check.py
+python tests/target_switch_browser_check.py
+python tests/tips_cache_browser_check.py
+python tests/english_example_browser_check.py
 ```
 
-- 統計測試：五種方法、最佳 CV、同一切分、原始單位公式重現預測、訓練專屬補值／未知類別、零目標、缺失值、奇異設計矩陣與運算上限。
-- 端到端：兩種內建資料；50 Startups 全五方法 k=1～5、Boston 全五方法 k=1～13；URL CSV、本機自訂 CSV、切換方法與 k、預測輸入、錯誤提示、390px 手機無頁面水平溢出；沒有 JavaScript 執行錯誤。新增自動啟動、seed 0／42、連續快速切換及舊結果清除的驗證，見 `tests/seed_browser_check.py`。
-- `artifacts/reference-desktop.png`：實際參考站截圖。
-- `artifacts/desktop.png`、`artifacts/boston-desktop.png`、`artifacts/mobile.png`：實際網站截圖。
-- `artifacts/browser-results.json`：瀏覽器驗證項目。
+`tests/pages_browser_check.py` 是獨立的 Pages／跨來源整合測試。需在三個終端分別啟動 API、靜態預覽及測試；以下設定不會變更正式 `deployment.json`：
+
+```bash
+# 終端 1：測試 API
+ALLOWED_ORIGINS=http://127.0.0.1:8765 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python -m uvicorn app:app --host 127.0.0.1 --port 8001
+
+# 終端 2：不連接後端的靜態版本，保留與 Pages 相同的子路徑
+python -c "from scripts.build_pages import build; build('dist/Regression-Analysis', api_base='')"
+python -m http.server 8765 --bind 127.0.0.1 --directory dist
+
+# 終端 3：先驗證零後端模式，再於測試瀏覽器接上 port 8001
+python tests/pages_browser_check.py
+```
+
+`artifacts/` 是本機產生的截圖與驗證報告，不納入 Git。正式線上驗證報告為 `render-live-verification.json`，截圖為 `render-connected-desktop.png`／`render-connected-mobile.png`；這些是本次驗證產物，不會隨 clone 自動下載。改版前的還原快照與截圖則有保存在 `backups/`。
 
 ## 檔案與設計參考
 
@@ -117,7 +179,14 @@ python tests/browser_check.py
 - `app.py`：FastAPI、CSV 載入與背景分析工作。
 - `static/`：完整前端、在地化字型、圖示與 Chart.js。
 - `data/`：已驗證的公開 CSV 快照。
-- `tests/`：統計與瀏覽器測試。
+- `data/presets/`：42 份已驗證的模型結果。
+- `deployment.json`：Pages 使用的公開後端網址。
+- `.github/workflows/pages.yml`：GitHub Pages 自動建置與發布。
+- `render.yaml`／`requirements-runtime.txt`：Render 免費服務及執行環境。
+- `scripts/build_pages.py`：匯出靜態網站與模型快取。
+- `scripts/build_presets.py`：重建失效或缺少的模型結果。
+- `scripts/restore_layout.py`／`backups/`：舊版本機版面還原。
+- `tests/`：統計、快取、部署與瀏覽器測試。
 
 實際檢視 [參考網站](https://huanchen1107.github.io/AIoT-DIC2-MultipleLR/)、其內嵌 JavaScript 及 [model_data.js](https://huanchen1107.github.io/AIoT-DIC2-MultipleLR/model_data.js)，並沿用其 CSS 版面與視覺語言（原站另參考 StatsUnlock）。本專案改寫互動及資料流程，修正固定最佳 k／過度擬合／F 值 fallback 文案。參考站 CSS 的原始著作權歸原作者，作為指定課堂重現使用；再散布前請自行確認原作者授權。
 
@@ -128,7 +197,7 @@ Seed 0 的 Lasso k=2（R&D Spend＋Marketing Spend）已驗證 Test RMSE=8,198.7
 
 ## 內建結果快取
 
-`data/presets/` 保存以本專案分析引擎實際計算的 42 份結果：50 Startups 的 4 個數值目標、Boston Housing 的 14 個數值目標、Restaurant Tips 的 3 個數值目標，各有 seed 0 與 42。每個目標都以其餘欄位作為候選特徵，產生所有方法的完整 k 曲線。它們不是複製參考站的固定數據。API 回傳經驗證的結果，前端直接渲染，進站、重新整理與預設設定下切換資料／seed 都不會呼叫訓練 API。
+`data/presets/` 保存以本專案分析引擎實際計算的 42 份結果：50 Startups 的 4 個數值目標、Boston Housing 的 14 個數值目標、Restaurant Tips 的 3 個數值目標，各有 seed 0 與 42。每個目標都以其餘欄位作為候選特徵，產生所有方法的完整 k 曲線。它們不是複製參考站的固定數據。本機版由 FastAPI 回傳結果；Pages 版在建置時匯出 JSON，瀏覽器直接讀取。進站、重新整理與完整候選集合下切換資料／seed 都不會呼叫訓練 API。
 
 快取以 CSV 內容、`analysis.py` 內容、seed、方法、目標、完整 k 範圍及數值套件版本的 SHA-256 指紋驗證。目標欄位、seed 分別索引不同快取；候選欄位不是該目標的完整候選集合時，不套用內建結果；自訂 CSV 仍由分析引擎處理。資料、分析程式或依賴版本變動後請執行：
 
@@ -136,7 +205,7 @@ Seed 0 的 Lasso k=2（R&D Spend＋Marketing Spend）已驗證 Test RMSE=8,198.7
 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python scripts/build_presets.py
 ```
 
-此指令只重建失效的內建結果，不必每次啟動執行。若快取缺失或失效，網站會退回實際分析，不會顯示過期數值。要在其他環境直接使用隨附快取，可安裝 `requirements-cache.txt` 中與快取一致的數值套件版本；否則先執行上述重建指令。
+此指令只重建失效的內建結果，不必每次啟動執行。本機版若快取缺失或失效，會退回實際分析；Pages 匯出則會直接讓建置失敗，需先重建快取再發布。要在其他環境直接使用隨附快取，可安裝 `requirements-cache.txt` 中與快取一致的數值套件版本；否則先執行上述重建指令。
 
 ## Sweet Spot / Cliff 視覺標籤
 
@@ -147,7 +216,7 @@ OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python scripts/build_presets.py
 
 Problem 選單只顯示資料集名稱。目標由獨立的數值目標選單決定，英文 description、公式、預測器和全部指標同步更新。內建目標結果按需讀取並保留於瀏覽器記憶體，切換回先前目標或重新全選候選特徵時直接復用，無需訓練；伺服器磁碟快取在重新整理後仍有效。
 
-自選候選特徵組合不全面預先計算；修改後隱藏舊結果並暫停 k 按鈕，顯示目前編碼後特徵數量的遞增序列，按「執行分析」後才可檢視。所有 k 按鈕及模型選單固定依方法／數值 k 排序，與 CV 分數排序分開，避免 Compare All 後順序錯亂。CHAS 等二元欄位也可作為 OLS 的數值目標進行探索；它仍是線性迴歸，不會自動改成分類模型。
+自選候選特徵組合不全面預先計算；修改後隱藏舊結果並暫停 k 按鈕，顯示目前編碼後特徵數量的遞增序列，按 **Run Analysis**後才可檢視。所有 k 按鈕及模型選單固定依方法／數值 k 排序，與 CV 分數排序分開，避免 Compare All 後順序錯亂。CHAS 等二元欄位也可作為 OLS 的數值目標進行探索；它仍是線性迴歸，不會自動改成分類模型。
 
 
 ## 自訂資料範例：Restaurant Tips
@@ -167,7 +236,7 @@ Restaurant Tips 快取回歸測試：`python tests/tips_cache_browser_check.py`�
 
 ## 2026-10-16 紫色工作區改版與還原
 
-版面參考 [Linear](https://linear.app/features) 的工作區導覽及 [Untitled UI](https://www.untitledui.com/components/dashboards) 的卡片與資訊層次。保留原有英文 UI，新增 `static/workspace.css`、重排 `static/index.html`；`app.js`、分析引擎及所有模型快取未變更。桌面將資料設定置左、分析結果置右；手機改為單欄和底部區段導覽。
+版面參考 [Linear](https://linear.app/features) 的工作區導覽及 [Untitled UI](https://www.untitledui.com/components/dashboards) 的卡片與資訊層次。保留原有英文 UI，新增 `static/workspace.css`、重排 `static/index.html`；當次版面改版保留分析引擎與模型結果；後續 `app.js` 已加入快取效能改善、GitHub Pages 靜態資料與 Render API 串接。桌面將資料設定置左、分析結果置右；手機改為單欄和底部區段導覽。
 
 改版前完整前端保存在 `backups/layout-before-purple-20261016/static/`，包括 CSS、JavaScript、字型及圖示。`manifest.json` 記錄檔案 SHA-256，`desktop.png`／`mobile.png` 記錄原始版面。
 
@@ -177,13 +246,15 @@ Restaurant Tips 快取回歸測試：`python tests/tips_cache_browser_check.py`�
 python scripts/restore_layout.py
 ```
 
-還原指令會先校驗快照，將當前前端另存到 `backups/before-restore-時間戳/`，再恢復舊版前端。之後重新整理瀏覽器即可，後端和資料快取不受影響。已在暫存目錄實測還原後全部快照檔案雜湊一致，且新版會另行保留。
+還原指令會先校驗快照，將當前前端另存到 `backups/before-restore-時間戳/`，再恢復舊版前端。本機網站重新整理即可，後端和資料快取不受影響。**此快照早於 Pages／Render 串接，還原會覆蓋前端 API 與路徑改動；不可直接將還原後的前端發布到 Pages，需先重新套用部署相容處理。**已在暫存目錄實測還原後全部快照檔案雜湊一致，且新版會另行保留。
 
 驗證：`full_progression_browser_check.py`、`target_switch_browser_check.py`、`tips_cache_browser_check.py`、`english_example_browser_check.py`，涵蓋內建全部目標／seed、Boston k=1～13、五種方法與比較模式、Tips 快取、自選特徵、CSV 上傳、動態預測、錯誤提示、英文介面及手機排版。新版截圖：`artifacts/purple-desktop.png`、`artifacts/purple-mobile.png`。
 
 ## Problem 切換效能修正
 
 原先每次切換都重新取得整包兩個 seed 的結果，Boston 約 2.6 MB；雖不重新訓練，仍有序列化與傳輸成本。現在同一頁面中的內建資料與 Tips 範例只載入一次，並共用尚未完成的請求；伺服器直接序列化已驗證的 JSON，啟用 gzip 壓縮。資料描述使用穩定的內建 ID，伺服器重啟或資料被記憶體上限淘汰後，手動分析仍可重建內建資料，不套用到任意自訂 CSV。
+
+以下為先前本機 FastAPI 版本的效能量測，並非 Render／Pages 線上服務的效能保證。Pages 現在直接讀取靜態模型結果。
 
 本機 Chromium 單次量測：Boston 原先切換 1.27～1.43 秒，修正後首次約 0.59 秒、再次切換約 0.13 秒；gzip 傳輸約 590 KB。此數字為本機測試結果，實際依裝置及連線而異。重新整理會建立新的瀏覽器記憶體快取，但仍直接讀取磁碟模型結果，不重新訓練。
 
