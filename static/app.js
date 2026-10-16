@@ -18,7 +18,45 @@ async function loadBuiltin(problem){
 const EXAMPLE_URL='https://raw.githubusercontent.com/mwaskom/seaborn-data/master/tips.csv';
 let dataLoadToken=0;
 let dataset=null,result=null,mode='Lasso',active=null,charts=[],generation=0,busy=false,pendingAuto=false;
-async function api(url,body){const r=await fetch(url,body instanceof FormData?{method:'POST',body}:body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{});const data=await r.json();if(!r.ok)throw Error(data.detail||'Request failed.');return data;}
+const deployment=window.REGRESSION_CONFIG||{staticData:false,apiBase:''};
+const staticDescriptors=new Map();
+async function readJSON(url,options={}){
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),90000);
+    try{
+        const r=await fetch(url,{...options,signal:controller.signal});
+        let data;
+        try{data=await r.json();}catch(e){throw Error(`The service returned an unreadable response (HTTP ${r.status}). Please try again shortly.`);}
+        if(!r.ok)throw Error(typeof data.detail==='string'?data.detail:`Request failed (HTTP ${r.status}).`);
+        return data;
+    }catch(e){
+        if(e.name==='AbortError')throw Error('The analysis service is taking too long to start. Please retry shortly; built-in examples remain available.');
+        if(e instanceof TypeError)throw Error('Unable to connect. Check your connection and try again; the analysis service may be starting.');
+        throw e;
+    }finally{clearTimeout(timer);}
+}
+async function staticBuiltin(problem,target){
+    if(!staticDescriptors.has(problem)){
+        const promise=readJSON(new URL(`./datasets/${encodeURIComponent(problem)}.json`,document.baseURI));
+        staticDescriptors.set(problem,promise);
+        promise.catch(()=>staticDescriptors.delete(problem));
+    }
+    const descriptor=await staticDescriptors.get(problem);
+    const selectedTarget=target||descriptor.target;
+    const file=descriptor.preset_files[selectedTarget];
+    if(!file)throw Error('No saved result is available for this target.');
+    const saved=await readJSON(new URL(file,document.baseURI));
+    if(target)return saved;
+    return {...descriptor,presets:saved.presets};
+}
+async function api(url,body){
+    const route=new URL(url,location.origin);
+    const bundled=route.pathname.match(/^\/api\/builtin\/([^/]+)(\/presets)?$/);
+    if(deployment.staticData&&!body&&bundled)return staticBuiltin(bundled[1],bundled[2]?route.searchParams.get('target'):null);
+    if(deployment.staticData&&!deployment.apiBase)throw Error('Custom analysis is not connected yet. You can explore all built-in datasets, targets, seeds, and saved models.');
+    const options=body instanceof FormData?{method:'POST',body}:body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{};
+    return readJSON((deployment.apiBase||'').replace(/\/$/,'')+url,options);
+}
 function status(text,error=false){$('status').textContent=text;$('status').className='status'+(error?' error':'');}
 function invalidate(){pendingAuto=false;generation++;result=null;active=null;$('results').hidden=true;$('activeModel').disabled=true;$('activeModel').innerHTML='<option>Available after analysis</option>';$('ks').innerHTML='';$('bestTag').textContent='★ Awaiting cross-validation';$('cliffTag').hidden=true;charts.forEach(c=>c.destroy());charts=[];status('Data or settings changed. Click Run Analysis.');}
 function renderMethods(){const hints=['L1 Ranking','Forward','Backward','L1 + L2','Best subset'];$('methods').innerHTML=[...methods,'ALL'].map((m,i)=>`<button class="tab-btn ${mode===m?'active':''}" data-method="${m}"><i class="fa-solid ${['fa-filter','fa-arrow-trend-up','fa-scissors','fa-diagram-project','fa-magnifying-glass-chart','fa-layer-group'][i]}"></i> ${m==='ALL'?'Compare All Methods':m} <span class="badge-pill">${hints[i]||'Compare all'}</span></button>`).join('');$('methods').querySelectorAll('button').forEach(b=>b.onclick=()=>{mode=b.dataset.method;renderMethods();if(result){const candidates=result.models.filter(m=>mode==='ALL'||m.method===mode);if(candidates.length){active=candidates.find(m=>m.id===active?.id)||candidates.find(m=>m.k===active?.k)||candidates[0];renderResult();}else{const skip=result.skipped?.find(x=>x.method===mode);status(skip?skip.reason:'This method has not been run. Click Run Analysis.',!!skip);}}});}
@@ -135,6 +173,8 @@ async function requestAutoAnalysis(){
 $('seed').onchange=requestAutoAnalysis;
 async function runAnalysis(){
     if(!dataset||busy)return;
+    // On Pages, the exact saved full-feature configuration needs no backend.
+    if(deployment.staticData){const cached=matchingPreset();if(cached){displayPreset(cached);return;}}
     invalidate();
     const token=generation, seed=Number($('seed').value);
     busy=true;$('run').disabled=true;
@@ -178,4 +218,5 @@ $('activeModel').onchange=()=>{active=result.models.find(x=>x.id===$('activeMode
 function renderCharts(){charts.forEach(c=>c.destroy());charts=[];const colors=['#6366f1','#10b981','#f59e0b','#f43f5e','#06b6d4','#64748b'];const show=mode==='ALL'?[...new Set(result.models.map(x=>x.method))]:[active.method,...(active.method==='Full OLS'?[]:['Full OLS'])];for(const [id,key] of [['rmseChart','rmse'],['r2Chart','r2']]){const data=show.map(method=>{const ms=result.models.filter(x=>x.method===method).sort((a,b)=>a.k-b.k);return {label:method,data:ms.map(m=>({x:m.k,y:m[key],model:m})),borderColor:colors[[...methods,'Full OLS'].indexOf(method)],backgroundColor:colors[[...methods,'Full OLS'].indexOf(method)],borderWidth:2,pointRadius:ms.map(m=>m.id===landmarks(method).sweet.id||m.id===landmarks(method).cliff?.model.id?7:4),pointBackgroundColor:ms.map(m=>m.id===landmarks(method).cliff?.model.id?'#f59e0b':m.id===landmarks(method).sweet.id?'#10b981':colors[[...methods,'Full OLS'].indexOf(method)]),tension:.15,borderDash:method==='Full OLS'?[5,5]:[]};});charts.push(new Chart($(id),{type:'line',data:{datasets:data},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:10}}},tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${fmt(c.parsed.y,4)}`,afterLabel:c=>['k = '+c.raw.model.k,...c.raw.model.features,'CV RMSE: '+fmt(c.raw.model.cv_rmse,3)]}}},scales:{x:{type:'linear',ticks:{stepSize:1},title:{display:true,text:'Number of encoded predictors (k)'}},y:{ticks:{maxTicksLimit:6}}}}}));}}
 function renderPredictor(){const m=active;$('predLabel').textContent=`Predicted ${result.target}`;$('predictInputs').innerHTML=m.inputs.map((s,i)=>`<div class="input-group"><label for="pred${i}">${esc(s.column)}</label>${s.kind==='numeric'?`<input id="pred${i}" type="number" step="any" value="${Number(s.fill.toPrecision(12))}"><input id="range${i}" aria-label="${esc(s.column)} slider" type="range" min="${s.min}" max="${s.max===s.min?s.max+1:s.max}" step="any" value="${Number(s.fill.toPrecision(12))}">`:`<select id="pred${i}">${s.categories.map(c=>`<option ${c===s.fill?'selected':''}>${esc(c)}</option>`).join('')}</select><p class="note">Reference category: ${esc(s.categories[0])}</p>`}</div>`).join('');m.inputs.forEach((s,i)=>{$('pred'+i).oninput=()=>{if(s.kind==='numeric')$('range'+i).value=$('pred'+i).value;predict();};if(s.kind==='numeric')$('range'+i).oninput=()=>{$('pred'+i).value=$('range'+i).value;predict();};});predict();}
 function predict(){let values={},notes=[];active.inputs.forEach((s,i)=>{const input=$('pred'+i).value;if(s.kind==='numeric'){const v=input===''?s.fill:Number(input);values[s.column]=Number.isFinite(v)?v:s.fill;if(input==='')notes.push(`${s.column} is blank; using training median ${fmt(s.fill)}`);if(v<s.min||v>s.max)notes.push(`${s.column} is outside the training range; this prediction is extrapolation`);}else{s.names.forEach((n,j)=>values[n]=input===s.categories[j+1]?1:0);}});const value=active.coefficients.reduce((sum,c,i)=>sum+c.estimate*(i?values[c.feature]??0:1),0);$('prediction').textContent=fmt(value,2);$('predNote').textContent=notes.join('; ')||'Input ranges and defaults come from training data. Unknown categories use zeros for all dummy variables.';}
+if(deployment.staticData&&!deployment.apiBase){$('serviceNotice').hidden=false;$('serviceNotice').textContent='Built-in examples are ready. Custom analysis is not connected yet.';}
 renderMethods();builtin();

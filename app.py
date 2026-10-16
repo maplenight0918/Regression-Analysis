@@ -1,4 +1,4 @@
-import io, json, math, socket, ipaddress, uuid, threading, time
+import io, json, math, socket, ipaddress, uuid, threading, time, os
 from pathlib import Path
 from urllib.parse import urlparse
 import numpy as np
@@ -8,6 +8,7 @@ from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Literal
 from analysis import analyze, METHODS
@@ -16,6 +17,14 @@ from preset_cache import load_presets, numeric_targets
 ROOT=Path(__file__).parent
 app=FastAPI(title='DIC-2 Regression Explorer')
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
+app.add_middleware(CORSMiddleware,
+    allow_origins=[x.strip().rstrip('/') for x in os.getenv('ALLOWED_ORIGINS','https://maplenight0918.github.io').split(',') if x.strip()],
+    allow_methods=['GET','POST'],allow_headers=['Content-Type'],allow_credentials=False)
+
+@app.get('/api/health')
+def health():
+    return {'status':'ok','service':'dic2-regression'}
+
 DATA={};JOBS={};LOCK=threading.Lock()
 SOURCES={'startups':('50_Startups.csv','Profit','https://raw.githubusercontent.com/Avik-Jain/100-Days-Of-ML-Code/master/datasets/50_Startups.csv'),'boston':('BostonHousing.csv','medv','https://raw.githubusercontent.com/selva86/datasets/master/BostonHousing.csv'),'tips':('tips.csv','tip','https://raw.githubusercontent.com/mwaskom/seaborn-data/master/tips.csv')}
 

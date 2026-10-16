@@ -2,6 +2,41 @@
 
 可直接執行的全英文多元線性迴歸分析網站。前端使用原生 JavaScript、Chart.js 與客製 CSS；後端使用 FastAPI、pandas、scikit-learn、statsmodels。沒有使用固定 model_data.js 結果。
 
+
+## 線上部署：GitHub Pages ＋ Render
+
+- 前端網址：[Regression Explorer](https://maplenight0918.github.io/Regression-Analysis/)
+- [Pages 部署工作流](https://github.com/maplenight0918/Regression-Analysis/actions/workflows/pages.yml)
+- **後端尚未建立時**，內建 50 Startups、Boston Housing、Restaurant Tips 的所有目標／seed／方法／k、係數、圖表與即時預測都可直接使用；自訂 CSV 與自選特徵重新訓練會明確顯示尚未連接分析服務。
+
+### 一鍵建立 Render 免費後端
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/maplenight0918/Regression-Analysis)
+
+1. 點上面的按鈕，登入或註冊 Render，確認來源為本儲存庫。
+2. 依 `render.yaml` 建立 Web Service。方案已明確設為 **Free**，不建立資料庫或付費磁碟；若平台畫面要求其他方案，先確認不要誤選付費項目。
+3. 等服務狀態變成 **Live**，複製實際配發的 `https://…onrender.com` 網址。名稱可能有後綴，請勿自行猜測網址。
+4. 開啟該網址的 `/api/health`，應回傳 `{"status":"ok","service":"dic2-regression"}`。
+5. 將公開網址填入根目錄 `deployment.json` 的 `apiBase`，提交推送，Pages 會自動重建並連接後端。也可在 GitHub 儲存庫 **Settings → Secrets and variables → Actions → Variables** 設定 `API_BASE_URL`，再手動執行 Pages workflow；變數優先於檔案設定。這是公開服務網址，不是密碼。
+
+Pages 的 Source 設為 **GitHub Actions**，不要選分支根目錄：原始碼需經 `scripts/build_pages.py` 匯出為 `dist/` 才能獨立運作。`.github/workflows/pages.yml` 自動安裝與模型快取相符的依賴、驗證快取、發布靜態檔案；缺少或過期快取會讓建置失敗，不會偷偷部署錯誤資料。
+
+Render 使用 Python 3.11、`requirements-runtime.txt` 與單一 uvicorn worker。允許的前端來源為 `https://maplenight0918.github.io`（CORS origin 不包含 `/Regression-Analysis/` 路徑）。使用其他網域時需同步修改 `ALLOWED_ORIGINS`。上傳的 CSV 只暫存在服務記憶體，服務重啟後需重新上傳；內建資料有穩定 ID 可自動恢復。
+
+免費 Render 閒置後可能休眠，第一次自訂分析須等待喚醒；前端請求逾時為 90 秒，可在錯誤提示後重試。內建模型完全從 Pages 讀取，不喚醒後端。免費方案運算資源有限，大型 Exhaustive Search 仍受 10,000 組合上限約束，其速度應以實際部署測試為準。
+
+### 本機驗證 Pages 版本
+
+```bash
+pip install -r requirements-runtime.txt
+python scripts/build_pages.py
+python -m http.server 8765 --directory dist
+```
+
+匯出支援專案子路徑，所有 CSS、JS、字型與資料使用相對網址。前端測試 `tests/pages_browser_check.py` 另外驗證 `/Regression-Analysis/` 子路徑、42 組預存結果、無後端存取、手機版，以及對獨立 FastAPI 服務的真實跨來源 CSV 上傳／URL 載入／自選特徵訓練。輸出的 `dist/` 不提交 Git，也不包含後端原始碼、上傳檔或憑證。
+
+官方文件：[GitHub Pages workflows](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)、[Render Blueprint](https://render.com/docs/blueprint-spec)、[Render 免費方案限制](https://render.com/docs/free)。
+
 ## 啟動
 
 建議 Python 3.9～3.12。於專案目錄執行：
@@ -15,7 +50,7 @@ OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python -m uvicorn app:app --host 127.0.
 
 瀏覽 http://localhost:8000 ，首次開啟直接顯示已計算的完整分析結果，預設 seed 0、Lasso（L1 Ranking），並選擇該方法的最低 CV RMSE 模型；目前 50 Startups 對應 k=2（R&D Spend＋Marketing Spend）。網站介面、資料描述、圖表、統計說明、狀態與錯誤提示均使用英文。Random seed 可切換 0（參考站切分）或 42（作業原始設定）；兩種內建 problem、兩種 seed 都有持久化結果快取，重新整理或切換不需重新訓練。內建資料切換任一數值目標時直接讀取對應結果；自訂候選特徵組合需按「執行分析」，恢復全選即可立即復用內建結果。Restaurant Tips 範例同樣有持久快取；其他自訂 CSV 切換目標時會實際分析。Windows 可使用 `.venv\Scripts\activate`，再執行 `python -m uvicorn app:app --port 8000`。
 
-內建 CSV、Chart.js、繁體中文字型及圖示均隨專案保存；首次安裝 Python 依賴需網路，之後內建分析可離線使用。載入遠端 CSV 需要網路。此網站需要 Python 服務，**不能直接部署為 GitHub Pages 靜態網站**。
+內建 CSV、Chart.js、繁體中文字型及圖示均隨專案保存；首次安裝 Python 依賴需網路，之後內建分析可離線使用。載入遠端 CSV 需要網路。本機完整版使用 Python 服務；GitHub Pages 版本由匯出腳本產生靜態內建模型，自訂分析另連接 Render，詳見上方部署說明。
 
 ## 功能
 

@@ -1,0 +1,9 @@
+# Runtime only; versions match the committed model-cache fingerprints.
+fastapi>=0.100,<1
+uvicorn>=0.23,<1
+numpy==1.24.2
+pandas==2.3.3
+scikit-learn==1.6.1
+statsmodels==0.14.6
+python-multipart>=0.0.9
+httpx>=0.24,<1
